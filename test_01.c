@@ -91,73 +91,68 @@ void submitClock(Clock clock){
 }
 
 // Função da thread para enviar relógios
-void* sender_thread(void* arg) {
-    Clock clock;
+void* startSenderThread(void* arg) {
     int my_id = *(int*)arg;
-
     while (1) {
-        clock = getClock();  // Obtém um relógio do buffer
-        Event(my_id, &clock, 1);  // Incrementa o relógio com o ID da thread
-        Send(0, &clock, my_id);  // Envia o relógio para o processo 0
-        // Aguardar um pouco para simular um processo de envio
-        usleep(1000);  // Aguarda por um curto período de tempo
+        Clock clock = getClock();
+        Event(my_id, &clock, 1);
+        Send(0, &clock, my_id);
+        usleep(1000);
     }
+    return NULL;
 }
 
 // Função da thread para receber relógios
-void* receiver_thread(void* arg) {
-    Clock clock;
+void* startReceiverThread(void* arg) {
     int my_id = *(int*)arg;
-
     while (1) {
-        Receive(0, &clock, my_id);  // Recebe um relógio do processo 0
-        submitClock(clock);  // Submete o relógio ao buffer
+        Clock clock;
+        Receive(0, &clock, my_id);
+        submitClock(clock);
     }
+    return NULL;
 }
 
 // Função da thread para atualizar relógios
-void* updater_thread(void* arg) {
-    Clock clock;
+void* startUpdaterThread(void* arg) {
     int my_id = *(int*)arg;
-
     while (1) {
-        clock = getClock();  // Obtém um relógio do buffer
-        Event(my_id, &clock, 1);  // Incrementa o relógio com o ID da thread
-        submitClock(clock);  // Submete o relógio ao buffer
+        Clock clock = getClock();
+        Event(my_id, &clock, 1);
+        submitClock(clock);
     }
+    return NULL;
 }
 
 int main(int argc, char** argv) {
-    int my_id, num_processes;
+    // Inicializa MPI
+    MPI_Init(&argc, &argv);
+    
     pthread_t sender, receiver, updater;
-    int thread_args[3];
+    int sender_id = 0, receiver_id = 1, updater_id = 2;
 
+    // Inicialização do mutex e variáveis de condição
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&condFull, NULL);
     pthread_cond_init(&condEmpty, NULL);
 
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
-    MPI_Comm_size(MPI_COMM_WORLD, &num_processes);
+    // Criação das threads
+    pthread_create(&sender, NULL, startSenderThread, &sender_id);
+    pthread_create(&receiver, NULL, startReceiverThread, &receiver_id);
+    pthread_create(&updater, NULL, startUpdaterThread, &updater_id);
 
-    if (num_processes != 3) {
-        printf("Este exemplo requer exatamente 3 processos MPI.\n");
-        MPI_Finalize();
-        return 1;
-    }
-
-    thread_args[0] = my_id;
-    thread_args[1] = my_id;
-    thread_args[2] = my_id;
-
-    pthread_create(&sender, NULL, sender_thread, &thread_args[0]);
-    pthread_create(&receiver, NULL, receiver_thread, &thread_args[1]);
-    pthread_create(&updater, NULL, updater_thread, &thread_args[2]);
-
+    // Aguarda as threads terminarem
     pthread_join(sender, NULL);
     pthread_join(receiver, NULL);
     pthread_join(updater, NULL);
 
+    // Destroi o mutex e variáveis de condição
+    pthread_mutex_destroy(&mutex);
+    pthread_cond_destroy(&condFull);
+    pthread_cond_destroy(&condEmpty);
+    
+    // Finaliza MPI
     MPI_Finalize();
+
     return 0;
 }
