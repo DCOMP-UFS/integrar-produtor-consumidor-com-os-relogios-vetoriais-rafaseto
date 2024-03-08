@@ -162,16 +162,38 @@ void callProcess(int my_id) {
 }
 
 int main() {
-    // Inicializa MPI
+    // Inicialização MPI
     MPI_Init(NULL, NULL);
 
-    // Simula o comportamento de três processos
-    for (int i = 0; i < 3; i++) {
-        callProcess(i);
-    }
+    // Inicialização das variáveis pthread
+    pthread_mutex_init(&mutexReceiveUpdate, NULL);
+    pthread_mutex_init(&mutexUpdateSend, NULL);
+    pthread_cond_init(&condFullReceiveUpdate, NULL);
+    pthread_cond_init(&condEmptyReceiveUpdate, NULL);
+    pthread_cond_init(&condFullUpdateSend, NULL);
+    pthread_cond_init(&condEmptyUpdateSend, NULL);
 
-    // Finaliza MPI
+    // Número total de processos
+    int total_processes;
+    MPI_Comm_size(MPI_COMM_WORLD, &total_processes);
+
+    // ID do processo atual
+    int my_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+
+    // Chamadas de processos para teste
+    callProcess(my_rank);
+
+    // Finalização MPI
     MPI_Finalize();
+
+    // Destruir variáveis pthread
+    pthread_mutex_destroy(&mutexReceiveUpdate);
+    pthread_mutex_destroy(&mutexUpdateSend);
+    pthread_cond_destroy(&condFullReceiveUpdate);
+    pthread_cond_destroy(&condEmptyReceiveUpdate);
+    pthread_cond_destroy(&condFullUpdateSend);
+    pthread_cond_destroy(&condEmptyUpdateSend);
 
     return 0;
 }
