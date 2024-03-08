@@ -97,7 +97,7 @@ void* startSenderThread(void* arg) {
         Clock clock = getClock();
         Event(my_id, &clock, 1);
         Send(0, &clock, my_id);
-        usleep(1000);
+        usleep(1000000);
     }
     return NULL;
 }
@@ -124,33 +124,48 @@ void* startUpdaterThread(void* arg) {
     return NULL;
 }
 
-int main(int argc, char** argv) {
+void callProcess(int my_id) {
+    Clock clock = {{0, 0, 0}};
+
+    switch (my_id) {
+        case 0:
+            Event(my_id, &clock, 1);
+            Send(1, &clock, my_id);
+            Receive(1, &clock, my_id);
+            Send(2, &clock, my_id);
+            Receive(2, &clock, my_id);
+            Send(1, &clock, my_id);
+            Event(my_id, &clock, 1);
+            break;
+
+        case 1:
+            Send(0, &clock, my_id);
+            Receive(0, &clock, my_id);
+            Receive(0, &clock, my_id);
+            break;
+
+        case 2:
+            Event(my_id, &clock, 1);
+            Send(0, &clock, my_id);
+            Receive(0, &clock, my_id);
+            break;
+
+        default:
+            fprintf(stderr, "The generated process exceeds the number of processes required!!\n");
+            printf("Bug found in source code: 404\n");
+            break;
+    }
+}
+
+int main() {
     // Inicializa MPI
-    MPI_Init(&argc, &argv);
-    
-    pthread_t sender, receiver, updater;
-    int sender_id = 0, receiver_id = 1, updater_id = 2;
+    MPI_Init(NULL, NULL);
 
-    // Inicialização do mutex e variáveis de condição
-    pthread_mutex_init(&mutex, NULL);
-    pthread_cond_init(&condFull, NULL);
-    pthread_cond_init(&condEmpty, NULL);
+    // Simula o comportamento de três processos
+    for (int i = 0; i < 3; i++) {
+        callProcess(i);
+    }
 
-    // Criação das threads
-    pthread_create(&sender, NULL, startSenderThread, &sender_id);
-    pthread_create(&receiver, NULL, startReceiverThread, &receiver_id);
-    pthread_create(&updater, NULL, startUpdaterThread, &updater_id);
-
-    // Aguarda as threads terminarem
-    pthread_join(sender, NULL);
-    pthread_join(receiver, NULL);
-    pthread_join(updater, NULL);
-
-    // Destroi o mutex e variáveis de condição
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&condFull);
-    pthread_cond_destroy(&condEmpty);
-    
     // Finaliza MPI
     MPI_Finalize();
 
