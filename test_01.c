@@ -1,5 +1,20 @@
-// PARTE DOS RELÓGIOS VETORIAIS
-// ==================================
+/**
+ * Código base para implementação de relógios vetoriais.
+ * Meta: implementar a interação entre três processos ilustrada na figura
+ * da URL: 
+ * 
+ * https://people.cs.rutgers.edu/~pxk/417/notes/images/clocks-vector.png
+ * 
+ * Compilação: mpicc -o rvet rvet.c
+ * Execução:   mpiexec -n 3 ./rvet
+ */
+ 
+#include <stdio.h>
+#include <string.h>  
+#include <mpi.h>     
+#include <pthread.h>
+
+
 typedef struct Clock { 
    int p[3];
 } Clock;
@@ -41,89 +56,70 @@ void Receive(int pid_receive_from, Clock *clock, int pid_receiver){
    Clock_logging(pid_receiver, clock);
 }
 
-
-
-// PARTE DO MODELO PRODUTOR/CONSUMIDOR
-// ==================================
-int produceRate;
-int consumeRate;
-
-typedef struct Clock {
-    int p[3];
-    long idProducer;
-} Clock;
-
-Clock clockQueue[BUFFER_SIZE];
-int clockCount = 0;
-
-pthread_mutex_t mutex;
-
-pthread_cond_t condFull;
-pthread_cond_t condEmpty;
-
-void consumeClock(Clock *clock, int idConsumer){
-    printf("(Consumer Thread %d) Consuming clock {%d, %d, %d} produced by  (Producer Thread %ld)\n", (idConsumer + 1)/2, clock->p[0], clock->p[1], clock->p[2], clock->idProducer);
+// Função para enviar thread
+void* sender_thread(void* arg) {
+    Clock clock = {{0,0,0}};
+    int my_id = *(int*)arg;
+    
+    // Código de envio
+    Event(my_id, &clock, 1);
+    Send(0, &clock, my_id);
+    
+    pthread_exit(NULL);
 }
 
-Clock getClock(){
-    pthread_mutex_lock(&mutex);
-
-    while (clockCount == 0){
-        pthread_cond_wait(&condEmpty, &mutex);
-    }
-
-    Clock clock = clockQueue[0];
-    int i;
-    for (i = 0; i < clockCount - 1; i++){
-        clockQueue[i] = clockQueue[i+1];
-    }
-    clockCount--;
-
-    pthread_mutex_unlock(&mutex);
-    pthread_cond_signal(&condFull);
-
-    return clock;
+// Função para receber thread
+void* receiver_thread(void* arg) {
+    Clock clock = {{0,0,0}};
+    int my_id = *(int*)arg;
+    
+    // Código de recebimento
+    Receive(0, &clock, my_id);
+    
+    pthread_exit(NULL);
 }
 
-void submitClock(Clock clock){
-    pthread_mutex_lock(&mutex);
-
-    while (clockCount == BUFFER_SIZE){
-        pthread_cond_wait(&condFull, &mutex);
-    }
-
-    clockQueue[clockCount] = clock;
-    clockCount++;
-
-    pthread_mutex_unlock(&mutex);
-    pthread_cond_signal(&condEmpty);
+// Função para atualizar thread
+void* updater_thread(void* arg) {
+    Clock clock = {{0,0,0}};
+    int my_id = *(int*)arg;
+    
+    // Código de atualização
+    Event(my_id, &clock, 1);
+    
+    pthread_exit(NULL);
 }
 
-/*-------------------------------------------------------------------*/
-void *startConsumerThread(void* args) {
-    long id = (long) args;
-    while (1){
-        Clock clock = getClock();
-        consumeClock(&clock, id);
-        sleep(consumeRate);
-    }
-    return NULL;
-}
+// Função principal
+int main(int argc, char** argv) {
+    int my_id, num_processes;
+    pthread_t sender, receiver, updater;
+    int thread_args[3];
 
-/*-------------------------------------------------------------------*/
-void *startProducerThread(void* args) {
-    long id = (long) args;
-    int myTime = 0;
-    while (1){
-        Clock clock;
-        clock.p[0] = 0;
-        clock.p[1] = 0;
-        clock.p[2] = 0;
-        clock.p[id] = myTime;
-        clock.idProducer = (long) id/2 + 1;
-        submitClock(clock);
-        myTime++;
-        sleep(produceRate);
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
+    MPI_Comm_size(MPI_COMM_WORLD, &num_processes);
+
+    if (num_processes != 3) {
+        printf("Este exemplo requer exatamente 3 processos MPI.\n");
+        MPI_Finalize();
+        return 1;
     }
-    return NULL;
+
+    // Inicializando as threads com os identificadores dos processos MPI
+    thread_args[0] = my_id;
+    thread_args[1] = my_id;
+    thread_args[2] = my_id;
+
+    pthread_create(&sender, NULL, sender_thread, &thread_args[0]);
+    pthread_create(&receiver, NULL, receiver_thread, &thread_args[1]);
+    pthread_create(&updater, NULL, updater_thread, &thread_args[2]);
+
+    // Aguardando o término das threads
+    pthread_join(sender, NULL);
+    pthread_join(receiver, NULL);
+    pthread_join(updater, NULL);
+
+    MPI_Finalize();
+    return 0;
 }
